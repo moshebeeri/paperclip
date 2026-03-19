@@ -40,7 +40,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
         }
         if (session?.user?.id) {
           const userId = session.user.id;
-          const [roleRow, memberships] = await Promise.all([
+          let [roleRow, memberships] = await Promise.all([
             db
               .select({ id: instanceUserRoles.id })
               .from(instanceUserRoles)
@@ -57,6 +57,21 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
                 ),
               ),
           ]);
+
+          // Auto-promote first real user to instance_admin on empty instance
+          if (!roleRow) {
+            const allAdmins = await db
+              .select({ userId: instanceUserRoles.userId })
+              .from(instanceUserRoles)
+              .where(eq(instanceUserRoles.role, "instance_admin"));
+            const hasRealAdmin = allAdmins.some((r) => r.userId !== "local-board");
+            if (!hasRealAdmin) {
+              await db.insert(instanceUserRoles).values({ userId, role: "instance_admin" });
+              roleRow = { id: "auto-promoted" };
+              logger.info({ userId }, "Auto-promoted first user to instance_admin");
+            }
+          }
+
           req.actor = {
             type: "board",
             userId,
