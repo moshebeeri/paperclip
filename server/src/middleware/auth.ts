@@ -57,11 +57,26 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
                 ),
               ),
           ]);
+          // Auto-promote first user to instance_admin when no admins exist yet
+          let isAdmin = Boolean(roleRow);
+          if (!isAdmin) {
+            const anyAdmin = await db
+              .select({ id: instanceUserRoles.id })
+              .from(instanceUserRoles)
+              .where(eq(instanceUserRoles.role, "instance_admin"))
+              .limit(1)
+              .then((rows) => rows[0] ?? null);
+            if (!anyAdmin) {
+              await db.insert(instanceUserRoles).values({ userId, role: "instance_admin" });
+              isAdmin = true;
+              logger.info({ userId }, "Auto-promoted first user to instance_admin (empty instance_user_roles)");
+            }
+          }
           req.actor = {
             type: "board",
             userId,
             companyIds: memberships.map((row) => row.companyId),
-            isInstanceAdmin: Boolean(roleRow),
+            isInstanceAdmin: isAdmin,
             runId: runIdHeader ?? undefined,
             source: "session",
           };
