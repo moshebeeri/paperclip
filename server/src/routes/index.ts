@@ -13,3 +13,4 @@ export { sidebarBadgeRoutes } from "./sidebar-badges.js";
 export { llmRoutes } from "./llms.js";
 export { accessRoutes } from "./access.js";
 export { taskRoutes } from "./tasks.js";
+export { gatewayCompatRoutes } from "./gateway-compat.js";

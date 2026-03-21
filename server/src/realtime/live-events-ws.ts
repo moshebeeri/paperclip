@@ -30,15 +30,24 @@ function rejectUpgrade(socket: Duplex, statusLine: string, message: string) {
   socket.destroy();
 }
 
-function parseCompanyId(pathname: string) {
+function parseCompanyId(pathname: string, searchParams?: URLSearchParams) {
+  // Standard path: /api/companies/:companyId/events/ws
   const match = pathname.match(/^\/api\/companies\/([^/]+)\/events\/ws$/);
-  if (!match) return null;
-
-  try {
-    return decodeURIComponent(match[1] ?? "");
-  } catch {
-    return null;
+  if (match) {
+    try {
+      return decodeURIComponent(match[1] ?? "");
+    } catch {
+      return null;
+    }
   }
+
+  // Gateway-compat path: /ws/bridge?org_id=<companyId>
+  if (pathname === "/ws/bridge" && searchParams) {
+    const orgId = searchParams.get("org_id") ?? searchParams.get("company_id");
+    return orgId || null;
+  }
+
+  return null;
 }
 
 function parseBearerToken(rawAuth: string | string[] | undefined) {
@@ -210,7 +219,7 @@ export function setupLiveEventsWebSocketServer(
     }
 
     const url = new URL(req.url, "http://localhost");
-    const companyId = parseCompanyId(url.pathname);
+    const companyId = parseCompanyId(url.pathname, url.searchParams);
     if (!companyId) {
       socket.destroy();
       return;
