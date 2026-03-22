@@ -76,13 +76,13 @@ function CloudAccessGate() {
     );
   }
 
-  if (isAuthenticatedMode && healthQuery.data?.bootstrapStatus === "bootstrap_pending") {
-    return <BootstrapPendingPage />;
-  }
-
   if (isAuthenticatedMode && !sessionQuery.data) {
     const next = encodeURIComponent(`${location.pathname}${location.search}`);
     return <Navigate to={`/auth?next=${next}`} replace />;
+  }
+
+  if (isAuthenticatedMode && healthQuery.data?.bootstrapStatus === "bootstrap_pending") {
+    return <BootstrapPendingPage />;
   }
 
   return <Outlet />;

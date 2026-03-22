@@ -178,6 +178,46 @@ describe("actorMiddleware auto-promote first user", () => {
     expect(insertedValues).toHaveLength(0);
   });
 
+  it("handles race condition when concurrent insert fails", async () => {
+    // Simulate: insert throws (duplicate key), but re-check finds the role
+    let selectCallCount = 0;
+    const mockDb = {
+      select: (cols?: any) => {
+        selectCallCount++;
+        const callNum = selectCallCount;
+        const chain: Record<string, any> = {};
+        chain.from = () => chain;
+        chain.where = () => chain;
+        chain.limit = () => chain;
+        chain.then = (fn: (rows: any[]) => any) => {
+          if (callNum === 1) return Promise.resolve(fn([])); // no admin role
+          if (callNum === 2) return Promise.resolve(fn([])); // no memberships
+          if (callNum === 3) return Promise.resolve(fn([])); // no existing admins
+          if (callNum === 4) return Promise.resolve(fn([{ id: "race-winner" }])); // re-check finds it
+          return Promise.resolve(fn([]));
+        };
+        chain[Symbol.iterator] = undefined;
+        return chain;
+      },
+      insert: () => ({
+        values: () => Promise.reject(new Error("duplicate key")),
+      }),
+    };
+
+    const middleware = actorMiddleware(mockDb as any, {
+      deploymentMode: "authenticated",
+      resolveSession: async () => mockSession,
+    });
+
+    const req = createMockRequest();
+    const next = vi.fn() as unknown as NextFunction;
+
+    await (middleware as any)(req, {} as Response, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(req.actor.isInstanceAdmin).toBe(true);
+  });
+
   it("does not auto-promote when no session is resolved", async () => {
     const { db, insertedValues } = createMockDb({
       userIsAdmin: false,

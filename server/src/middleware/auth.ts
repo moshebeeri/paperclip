@@ -66,9 +66,24 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
               .where(eq(instanceUserRoles.role, "instance_admin"));
             const hasRealAdmin = allAdmins.some((r) => r.userId !== "local-board");
             if (!hasRealAdmin) {
-              await db.insert(instanceUserRoles).values({ userId, role: "instance_admin" });
-              roleRow = { id: "auto-promoted" };
-              logger.info({ userId }, "Auto-promoted first user to instance_admin");
+              try {
+                await db.insert(instanceUserRoles).values({ userId, role: "instance_admin" });
+                roleRow = { id: "auto-promoted" };
+                logger.info({ userId }, "Auto-promoted first user to instance_admin");
+              } catch (err) {
+                // Race condition: another concurrent request may have inserted first.
+                // Re-check whether this user now has the role.
+                const recheck = await db
+                  .select({ id: instanceUserRoles.id })
+                  .from(instanceUserRoles)
+                  .where(and(eq(instanceUserRoles.userId, userId), eq(instanceUserRoles.role, "instance_admin")))
+                  .then((rows) => rows[0] ?? null);
+                if (recheck) {
+                  roleRow = recheck;
+                } else {
+                  logger.warn({ userId, err }, "Auto-promote insert failed");
+                }
+              }
             }
           }
 
